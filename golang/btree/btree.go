@@ -1,6 +1,9 @@
 package btree
 
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+)
 
 const (
 	HEADER             = 4
@@ -65,7 +68,6 @@ func (node BNode) getPtr(idx uint16) uint64 {
 }
 
 func (node BNode) setPtr(idx uint16, val uint64) {
-
 }
 
 func offsetPos(node BNode, idx uint16) uint16 {
@@ -101,4 +103,53 @@ func (node BNode) getKey(idx uint16) []byte {
 // node size in bytes
 func (node BNode) nBytes() uint16 {
 	return node.kvPos(node.nKeys())
+}
+
+// Return the first kid node whose range intersects the key. (kid[i] <= key)
+// TODO binary search
+func nodeLookupLE(node BNode, key []byte) uint16 {
+	nKeys := node.nKeys()
+	found := uint16(0)
+
+	// the first key is a copy from the parent node,
+	// thus it's always less than equal to the key
+	for i := uint16(1); i < nKeys; i++ {
+		cmp := bytes.Compare(node.getKey(i), key)
+		if cmp <= 0 {
+			found = i
+		}
+		if cmp >= 0 {
+			break
+		}
+	}
+	return found
+}
+
+// add a new key to a leaf node
+func leafInsert(
+  new, old BNode, idx uint16,
+  key, val []byte,
+) {
+  new.setHeader(BNODE_LEAF,old.nKeys()+1) // setup the header 
+  nodeAppendRange(new, old, 0, 0, idx)
+  nodeAppendKV(new, idx, 0, key, val)
+  nodeAppendRange()
+}
+
+func nodeAppendKV(new BNode, idx uint16, ptr uint64, key, val []byte) {
+  // ptrs
+  new.setPtr(idx, ptr)
+  // KVs
+  pos := new.kvPos(idx)
+  binary.LittleEndian.PutUint16(new[pos+0:], uint16(len(key)))
+  binary.LittleEndian.PutUint16(new[pos+2:], uint16(len(val)))
+  copy(new[pos+4:], key)
+  copy(new[pos+4+uint16(len(key)):], val)
+  // the offset of the next key
+  new.setOffSet(idx + 1, new.getOffset(idx) + 4 + uint16(len(key) + len(val))
+}
+
+// copy multiple KVs into the position from the old node
+func nodeAppendRange(new, old BnBNode, dstNew, srcOld,n uint16) {
+
 }
