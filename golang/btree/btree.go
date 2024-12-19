@@ -127,29 +127,71 @@ func nodeLookupLE(node BNode, key []byte) uint16 {
 
 // add a new key to a leaf node
 func leafInsert(
-  new, old BNode, idx uint16,
-  key, val []byte,
+	new, old BNode, idx uint16,
+	key, val []byte,
 ) {
-  new.setHeader(BNODE_LEAF,old.nKeys()+1) // setup the header 
-  nodeAppendRange(new, old, 0, 0, idx)
-  nodeAppendKV(new, idx, 0, key, val)
-  nodeAppendRange()
+	new.setHeader(BNODE_LEAF, old.nKeys()+1) // setup the header
+	nodeAppendRange(new, old, 0, 0, idx)
+	nodeAppendKV(new, idx, 0, key, val)
+	//nodeAppendRange()
 }
 
 func nodeAppendKV(new BNode, idx uint16, ptr uint64, key, val []byte) {
-  // ptrs
-  new.setPtr(idx, ptr)
-  // KVs
-  pos := new.kvPos(idx)
-  binary.LittleEndian.PutUint16(new[pos+0:], uint16(len(key)))
-  binary.LittleEndian.PutUint16(new[pos+2:], uint16(len(val)))
-  copy(new[pos+4:], key)
-  copy(new[pos+4+uint16(len(key)):], val)
-  // the offset of the next key
-  new.setOffSet(idx + 1, new.getOffset(idx) + 4 + uint16(len(key) + len(val))
+	// ptrs
+	new.setPtr(idx, ptr)
+	// KVs
+	pos := new.kvPos(idx)
+	binary.LittleEndian.PutUint16(new[pos+0:], uint16(len(key)))
+	binary.LittleEndian.PutUint16(new[pos+2:], uint16(len(val)))
+	copy(new[pos+4:], key)
+	copy(new[pos+4+uint16(len(key)):], val)
+	// the offset of the next key
+	new.setOffSet(idx+1, new.getOffset(idx)+4+uint16(len(key)+len(val)))
 }
 
 // copy multiple KVs into the position from the old node
-func nodeAppendRange(new, old BnBNode, dstNew, srcOld,n uint16) {
+func nodeAppendRange(new, old BNode, dstNew, srcOld, n uint16) {
 
+}
+
+// replace a link with one or multiple links
+func nodeReplaceKidN(
+	tree *BTree,
+	new, old BNode, idx uint16,
+	kids ...BNode,
+) {
+	inc := uint16(len(kids))
+	new.setHeader(BNODE_NODE, old.nKeys()+inc-1)
+	nodeAppendRange(new, old, 0, 0, idx)
+	for i, node := range kids {
+		// , position, pointer, key, val
+		nodeAppendKV(new, idx+uint16(i), tree.new(node), node.getKey(0), nil)
+	}
+
+	nodeAppendRange(new, old, idx+inc, idx+1, old.nKeys()-(idx+1))
+}
+
+// split a oversized node into 2 so that the 2nd node always fits on a page
+func nodeSplit2(left, right, old BNode) {}
+
+// split a node if it's too big. The results are 1 ~ 3 nodes.
+func nodeSplit3(old BNode) (uint16, [3]BNode) {
+	if old.nBytes() <= BTREE_PAGE_SIZE {
+		old = old[:BTREE_PAGE_SIZE]
+		return 1, [3]BNode{old} // not split
+	}
+
+	left := BNode(make([]byte, 2*BTREE_PAGE_SIZE)) // might be split later
+	right := BNode(make([]byte, BTREE_PAGE_SIZE))
+	nodeSplit2(left, right, old)
+	if left.nBytes() <= BTREE_PAGE_SIZE {
+		left = left[:BTREE_PAGE_SIZE]
+		return 2, [3]BNode{left, right} // 2 nodes
+	}
+
+	leftLeft := BNode(make([]byte, BTREE_PAGE_SIZE))
+	middle := BNode(make([]byte, BTREE_PAGE_SIZE))
+	nodeSplit2(leftLeft, middle, left)
+	assert(leftLeft.nBytes() <= BTREE_PAGE_SIZE)
+	return 3, [3]BNode{leftLeft, middle, right} // 3 nodes
 }
